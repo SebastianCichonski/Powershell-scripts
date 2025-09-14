@@ -1,3 +1,48 @@
+<#
+.SYNOPSIS
+Skrypt do migracji udziałów sieciowych z zdalnego komputera na lokalny serwer.
+
+.DESCRIPTION
+Ten skrypt automatyzuje proces kopiowania udziałów sieciowych z komputera źródłowego (określonego przez parametr `ComputerName`) do lokalnego katalogu docelowego (`Destination`). Wykorzystuje pliki XML zawierające informacje o udziałach oraz ich uprawnieniach, aby odtworzyć strukturę folderów i przypisać odpowiednie prawa dostępu NTFS oraz SMB.
+
+Działanie skryptu obejmuje:
+- Weryfikację i utworzenie folderu logów
+- Rozpoczęcie transkrypcji wykonania
+- Import danych udziałów i uprawnień z plików XML
+- Tworzenie struktury folderów docelowych
+- Kopiowanie danych za pomocą Robocopy z zachowaniem uprawnień
+- Tworzenie udziałów SMB z odpowiednimi uprawnieniami (Full, Change, Read)
+
+.PARAMETER ComputerName
+Nazwa komputera źródłowego, z którego mają zostać pobrane udziały. Parametr obowiązkowy.
+
+.PARAMETER Destination
+Ścieżka lokalna, do której mają zostać skopiowane dane. Parametr obowiązkowy.
+
+.PARAMETER ExportedSharesFile
+Ścieżka do pliku XML zawierającego informacje o udziałach. Domyślnie: `C:\shares.xml`.
+
+.PARAMETER ExportedSharesAccess
+Ścieżka do pliku XML zawierającego informacje o uprawnieniach do udziałów. Domyślnie: `C:\sharesAccess.xml`.
+
+.PARAMETER LogFolder
+Folder, w którym zapisywane są logi operacji. Domyślnie: `C:\MigrationLogs`.
+
+.INPUTS
+[string]
+
+.OUTPUTS
+Brak bezpośredniego zwrotu obiektów. Skrypt wykonuje operacje kopiowania i tworzenia udziałów oraz zapisuje logi.
+
+.EXAMPLE
+.\Migrate-Shares.ps1 -ComputerName "Server01" -Destination "D:\MigratedShares"
+
+.NOTES
+Author: Sebastian Cichoński
+Version: 1.0
+Creation Date:  Sierpień 2025
+#>
+
 [CmdletBinding()]
 param (
     [Parameter(Mandatory, Position = 0, ValueFromPipeline)]
@@ -79,7 +124,7 @@ try {
         $source = Join-Path $sourceServerPath $share.Name
 
         # Uruchom robocopy i sprawdź $LASTEXITCODE
-        & Robocopy.exe $source $dest /MIR /COPYALL /SEC /R:3 /W:5 "/LOG+:$logFile"
+        Robocopy.exe $source $dest /MIR /COPYALL /SEC /R:3 /W:5 /LOG+:$logFile
         $rc = $LASTEXITCODE
         if ($rc -ge 8) {
             Write-Warning "Robocopy zakończył się błędem (kod $rc) dla $source"
@@ -87,26 +132,27 @@ try {
             Write-Verbose "Skopiowano dane z $source do $dest (Robocopy kod: $rc)"
         }
 
-        # =====Tworzenie udziałów=====
+    # =====Tworzenie udziałów=====
         $shareParameters = @{
             Path        = $dest
             Name        = $share.Name + "_migrate"
             Description = "Udział: " + $share.Name
         }
 
-        if ($null -ne $share.FolderEnumerationMode) { $shareParameters.FolderEnumerationMode = $share.FolderEnumerationMode }
-        if ($null -ne $share.CachingMode)           { $shareParameters.CachingMode = $share.CachingMode }
-        if ($null -ne $share.EncryptData)           { $shareParameters.EncryptData = $share.EncryptData }
+    if ($null -ne $share.FolderEnumerationMode) { $shareParameters.FolderEnumerationMode = $share.FolderEnumerationMode }
+    if ($null -ne $share.CachingMode)           { $shareParameters.CachingMode = $share.CachingMode }
+    if ($null -ne $share.EncryptData)           { $shareParameters.EncryptData = $share.EncryptData }
 
-        $Full = $sharesAccess | Where-Object { ($_.AccessRight -eq 'Full')   -and ($_.Name -eq $share.Name) } | Select-Object -ExpandProperty AccountName -ErrorAction SilentlyContinue
-        $Change = $sharesAccess | Where-Object { ($_.AccessRight -eq 'Change') -and ($_.Name -eq $share.Name) } | Select-Object -ExpandProperty AccountName -ErrorAction SilentlyContinue
-        $Read = $sharesAccess | Where-Object { ($_.AccessRight -eq 'Read')   -and ($_.Name -eq $share.Name) } | Select-Object -ExpandProperty AccountName -ErrorAction SilentlyContinue
+    $Full = $sharesAccess | Where-Object { ($_.AccessRight -eq 'Full')   -and ($_.Name -eq $share.Name) } | Select-Object -ExpandProperty AccountName -ErrorAction SilentlyContinue
+    $Change = $sharesAccess | Where-Object { ($_.AccessRight -eq 'Change') -and ($_.Name -eq $share.Name) } | Select-Object -ExpandProperty AccountName -ErrorAction SilentlyContinue
+    $Read = $sharesAccess | Where-Object { ($_.AccessRight -eq 'Read')   -and ($_.Name -eq $share.Name) } | Select-Object -ExpandProperty AccountName -ErrorAction SilentlyContinue
 
         if ($Full)   { $shareParameters.FullAccess   = $Full }
         if ($Change) { $shareParameters.ChangeAccess = $Change }
         if ($Read)   { $shareParameters.ReadAccess   = $Read }
 
         $smbName = $shareParameters.Name
+
         # sprawdź czy udział już istnieje
         $existing = Get-SmbShare -Name $smbName -ErrorAction SilentlyContinue
         if ($existing) {

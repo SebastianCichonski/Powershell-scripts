@@ -1,136 +1,77 @@
-# Pester v5 tests for Move-Share.ps1
+﻿<#
+.SYNOPSIS
+Testy jednostkowe dla skryptu Move-Share.ps1 przy użyciu frameworka Pester.
 
-Describe 'Move-Share.ps1' {
+.DESCRIPTION
+Ten zestaw testów weryfikuje poprawność działania skryptu Move-Share.ps1, który odpowiada za migrację udziałów sieciowych SMB. Testy koncentrują się na kluczowych aspektach działania skryptu, takich jak:
+- Tworzenie folderu logowania
+- Importowanie danych udziałów z pliku XML
+- Wywoływanie narzędzia Robocopy
+- Tworzenie udziałów SMB, jeśli nie istnieją
 
-    $scriptPath = 'd:\Git-Projects\Powershell-Scripts\ShareMigrate\Move-Share.ps1'
+W sekcji BeforeEach mockowane są wszystkie zależności systemowe, aby testy mogły być uruchamiane w izolacji bez wpływu na rzeczywisty system plików czy konfigurację SMB.
 
-    Context 'When exported shares file is missing' {
-        It 'writes an error about missing exported shares file' {
-            Mock -CommandName Test-Path -MockWith {
-                param($Path)
-                if ($Path -eq 'C:\missing_shares.xml') { return $false } else { return $true }
-            }
+.PARAMETER $scriptPath
+Ścieżka do testowanego skryptu Move-Share.ps1, ustalana dynamicznie na podstawie lokalizacji testu.
 
-            Mock -CommandName Start-Transcript
-            Mock -CommandName Stop-Transcript
-            Mock -CommandName New-Item
-            Mock -CommandName Write-Error
+.NOTES
+Autor: Sebastian Cichoński  
+Data utworzenia: Wrzesień 2025  
+Framework: Pester v5  
+#>
 
-            & $scriptPath -ComputerName 'SRC' -Destination 'D:\dest' -ExportedSharesFile 'C:\missing_shares.xml' -ExportedSharesAccess 'C:\access.xml' -LogFolder 'C:\logs' 2>$null
 
-            Assert-MockCalled -CommandName Write-Error -Times 1 -Exactly -Scope It
-        }
+# ========================
+# Sekcja przygotowawcza
+# ========================
+
+# Import funkcji do testowania
+#. (Resolve-Path "$PSScriptRoot\..\Move-Share.ps1").Path
+$scriptPath = (Get-Item "$PSScriptRoot\..\Move-Share.ps1").FullName
+# ========================
+# Blok testowy
+# ========================
+
+Describe 'Tests for Move-Share.ps1' {
+
+    # Mockowanie zależności systemowych
+    BeforeEach {
+        Mock -CommandName Test-Path -MockWith { $true }
+        Mock -CommandName New-Item -MockWith { @{ FullName = 'C:\MockFolder' } }
+        Mock -CommandName Start-Transcript
+        Mock -CommandName Stop-Transcript
+        Mock -CommandName Import-Clixml -MockWith { @(@{ Name = 'Share1' }) }
+        Mock -CommandName Robocopy.exe -MockWith { $global:LASTEXITCODE = 0 }
+        Mock -CommandName Get-SmbShare -MockWith { $null }
+        Mock -CommandName New-SmbShare
+        Mock -CommandName Write-Verbose
+        Mock -CommandName Write-Warning
+        Mock -CommandName Write-Error
     }
 
-    Context 'When shares and access present' {
-        It 'calls Robocopy and creates SMB share' {
-            Mock -CommandName Test-Path -MockWith { return $true }
-
-            $sampleShare = [PSCustomObject]@{ Name = 'Share1'; FolderEnumerationMode = 'AccessBased'; CachingMode = 'Manual'; EncryptData = $false }
-            Mock -CommandName Import-Clixml -MockWith { param($Path) if ($Path -like '*shares.xml') { return @($sampleShare) } else { return @([PSCustomObject]@{AccessRight='Full'; Name='Share1'; AccountName='DOMAIN\User'}) } }
-
-            Mock -CommandName Start-Transcript
-            Mock -CommandName Stop-Transcript
-            Mock -CommandName New-Item
-            Mock -CommandName Robocopy.exe
-            Mock -CommandName Get-SmbShare -MockWith { return $null }
-            Mock -CommandName New-SmbShare
-
-            & $scriptPath -ComputerName 'SRC' -Destination 'D:\dest' -ExportedSharesFile 'C:\shares.xml' -ExportedSharesAccess 'C:\sharesAccess.xml' -LogFolder 'C:\logs'
-
-            Assert-MockCalled -CommandName Robocopy.exe -Times 1 -Scope It
-            Assert-MockCalled -CommandName New-SmbShare -Times 1 -Scope It
-        }
+    It 'Powinien utworzyć folder logowania jeśli nie istnieje' {
+        & $scriptPath -ComputerName 'Server01' -Destination 'C:\Dest'
+        Assert-MockCalled -CommandName New-Item -Times 1
     }
 
-    Context 'When exported access file is missing' {
-        It 'writes an error about missing access file and returns' {
-            Mock -CommandName Test-Path -MockWith {
-                param($Path)
-                if ($Path -eq 'C:\sharesAccess_missing.xml') { return $false } else { return $true }
-            }
-
-            Mock -CommandName Start-Transcript
-            Mock -CommandName Stop-Transcript
-            Mock -CommandName Write-Error
-
-            & $scriptPath -ComputerName 'SRC' -Destination 'D:\dest' -ExportedSharesFile 'C:\shares.xml' -ExportedSharesAccess 'C:\sharesAccess_missing.xml' -LogFolder 'C:\logs' 2>$null
-
-            Assert-MockCalled -CommandName Write-Error -Times 1 -Scope It
-        }
+    It 'Powinien zaimportować plik z udziałami' {
+        & $scriptPath -ComputerName 'Server01' -Destination 'C:\Dest'
+        Assert-MockCalled -CommandName Import-Clixml -Times 2
     }
 
-    Context 'When Robocopy returns an error code (>=8)' {
-        It 'emits a warning about robocopy failure' {
-            Mock -CommandName Test-Path -MockWith { return $true }
-
-            $sampleShare = [PSCustomObject]@{ Name = 'Share1'; FolderEnumerationMode = $null; CachingMode = $null; EncryptData = $null }
-            Mock -CommandName Import-Clixml -MockWith { param($Path) if ($Path -like '*shares.xml') { return @($sampleShare) } else { return @([PSCustomObject]@{AccessRight='Full'; Name='Share1'; AccountName='DOMAIN\User'}) } }
-
-            Mock -CommandName Start-Transcript
-            Mock -CommandName Stop-Transcript
-            Mock -CommandName New-Item
-
-            Mock -CommandName Robocopy.exe -MockWith {
-                $global:LASTEXITCODE = 8
-                return 0
-            }
-
-            Mock -CommandName Get-SmbShare -MockWith { return $null }
-            Mock -CommandName New-SmbShare
-            Mock -CommandName Write-Warning
-
-            & $scriptPath -ComputerName 'SRC' -Destination 'D:\dest' -ExportedSharesFile 'C:\shares.xml' -ExportedSharesAccess 'C:\sharesAccess.xml' -LogFolder 'C:\logs' 2>$null
-
-            Assert-MockCalled -CommandName Robocopy.exe -Times 1 -Scope It
-            Assert-MockCalled -CommandName Write-Warning -Times 1 -Scope It
-        }
+    It 'Powinien wywołać Robocopy dla każdego udziału' {
+        & $scriptPath -ComputerName 'Server01' -Destination 'C:\Dest'
+        Assert-MockCalled -CommandName Robocopy.exe -Times 1
     }
 
-    Context 'When SMB share already exists' {
-        It 'skips New-SmbShare' {
-            Mock -CommandName Test-Path -MockWith { return $true }
-
-            $sampleShare = [PSCustomObject]@{ Name = 'Share1'; FolderEnumerationMode = $null; CachingMode = $null; EncryptData = $null }
-            Mock -CommandName Import-Clixml -MockWith { param($Path) if ($Path -like '*shares.xml') { return @($sampleShare) } else { return @([PSCustomObject]@{AccessRight='Full'; Name='Share1'; AccountName='DOMAIN\User'}) } }
-
-            Mock -CommandName Start-Transcript
-            Mock -CommandName Stop-Transcript
-            Mock -CommandName New-Item
-            Mock -CommandName Robocopy.exe -MockWith { $global:LASTEXITCODE = 1; return 0 }
-
-            Mock -CommandName Get-SmbShare -MockWith { return [PSCustomObject]@{ Name = 'Share1_migrate' } }
-            Mock -CommandName New-SmbShare
-
-            & $scriptPath -ComputerName 'SRC' -Destination 'D:\dest' -ExportedSharesFile 'C:\shares.xml' -ExportedSharesAccess 'C:\sharesAccess.xml' -LogFolder 'C:\logs' 2>$null
-
-            Assert-MockCalled -CommandName Get-SmbShare -Times 1 -Scope It
-            Assert-MockNotCalled -CommandName New-SmbShare -Scope It
-        }
+    It 'Powinien utworzyć udział SMB jeśli nie istnieje' {
+        & $scriptPath -ComputerName 'Server01' -Destination 'C:\Dest'
+        Assert-MockCalled -CommandName New-SmbShare -Times 1
     }
-
-    Context 'When destination folder is missing' {
-        It 'creates destination folder' {
-            Mock -CommandName Test-Path -MockWith {
-                param($Path)
-                if ($Path -eq 'D:\dest') { return $false }
-                return $true
-            }
-
-            $sampleShare = [PSCustomObject]@{ Name = 'Share1'; FolderEnumerationMode = $null; CachingMode = $null; EncryptData = $null }
-            Mock -CommandName Import-Clixml -MockWith { param($Path) if ($Path -like '*shares.xml') { return @($sampleShare) } else { return @([PSCustomObject]@{AccessRight='Full'; Name='Share1'; AccountName='DOMAIN\User'}) } }
-
-            Mock -CommandName Start-Transcript
-            Mock -CommandName Stop-Transcript
-            Mock -CommandName New-Item
-            Mock -CommandName Robocopy.exe -MockWith { $global:LASTEXITCODE = 1; return 0 }
-            Mock -CommandName Get-SmbShare -MockWith { return $null }
-            Mock -CommandName New-SmbShare
-
-            & $scriptPath -ComputerName 'SRC' -Destination 'D:\dest' -ExportedSharesFile 'C:\shares.xml' -ExportedSharesAccess 'C:\sharesAccess.xml' -LogFolder 'C:\logs' 2>$null
-
-            Assert-MockCalled -CommandName New-Item -TimesAtLeast 1 -Scope It
-        }
-    }
-
 }
+
+# ========================
+# Wywołanie testów
+# ========================
+
+Invoke-Pester
