@@ -2,7 +2,7 @@
 
 ## 0. Opis
 
-Ten skrypt PowerShell automatyzuje proces migracji udziałów sieciowych z komputera zdalnego na lokalny serwer. Wykorzystuje pliki XML zawierające informacje o udziałach oraz ich uprawnieniach, aby odtworzyć strukturę folderów i przypisać odpowiednie prawa dostępu NTFS oraz SMB.
+Ten skrypt PowerShell automatyzuje proces migracji udziałów sieciowych z komputera zdalnego na lokalny serwer. Wykorzystuje pliki XML zawierające informacje o udziałach oraz ich uprawnieniach, aby odtworzyć strukturę folderów i przypisać odpowiednie prawa dostępu NTFS oraz SMB. Jak utworzyć pliki XML z udziałami i uprawnieniami opisano w punkcje 8.
 
 ## 1. Funkcjonalności
 
@@ -25,7 +25,7 @@ Ten skrypt PowerShell automatyzuje proces migracji udziałów sieciowych z kompu
 
 ## 3. Przykład użycia
 ```powershell
-.\Migrate-Shares.ps1 -ComputerName "Server01" -Destination "D:\MigratedShares"
+.\Move-Shares.ps1 -ComputerName "Server01" -Destination "D:\MigratedShares"
 ```
 
 ## 4. Wymagania

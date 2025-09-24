@@ -3,7 +3,8 @@
 Skrypt do migracji udziałów sieciowych z zdalnego komputera na lokalny serwer.
 
 .DESCRIPTION
-Ten skrypt automatyzuje proces kopiowania udziałów sieciowych z komputera źródłowego (określonego przez parametr `ComputerName`) do lokalnego katalogu docelowego (`Destination`). Wykorzystuje pliki XML zawierające informacje o udziałach oraz ich uprawnieniach, aby odtworzyć strukturę folderów i przypisać odpowiednie prawa dostępu NTFS oraz SMB.
+Ten skrypt automatyzuje proces kopiowania udziałów sieciowych z komputera źródłowego (określonego przez parametr `ComputerName`) do lokalnego katalogu docelowego (`Destination`). 
+Wykorzystuje pliki XML zawierające informacje o udziałach oraz ich uprawnieniach, aby odtworzyć strukturę folderów i przypisać odpowiednie prawa dostępu NTFS oraz SMB.
 
 Działanie skryptu obejmuje:
 - Weryfikację i utworzenie folderu logów
